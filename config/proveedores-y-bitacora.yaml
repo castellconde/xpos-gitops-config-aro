@@ -1,0 +1,59 @@
+# =========================================================================================
+# Catálogo GitOps de Proveedores Externos y Retención de Bitácora
+# Regla de arquitectura: "El formato y los códigos se configuran; el protocolo se programa."
+# Ningún secreto vive en este archivo; solo referencias de alias hacia CyberArk Conjur.
+# =========================================================================================
+
+bitacora:
+  particion: mensual
+  retencion_caliente_meses: 6
+  retencion_payload_dias: 60
+  retencion_total_meses: 13
+  particiones_futuras: 3
+
+proveedores:
+  prosa-iso:
+    protocolo: ISO_8583
+    endpoint: "tcp://jpos-iso-gateway.xpos-cde-pci.svc:8583"
+    credencial_conjur_alias: "conjur://vault/pci/proveedores/prosa/channel-key"
+    timeouts:
+      conexion_ms: 1500
+      lectura_ms: 4000
+    reintentos:
+      inmediatos_max: 2
+      escalones_diferidos: ["reverso.retry.1m", "reverso.retry.5m", "reverso.retry.30m"]
+      ventana_maxima_minutos: 45
+    circuit_breaker:
+      sliding_window_size: 20
+      failure_rate_threshold: 50
+      wait_duration_in_open_ms: 30000
+    estrategia_reverso: REPETICION_0420_DE90
+    tabla_codigos_canonicos:
+      "00": EXITO
+      "94": YA_APLICADO
+      "91": ERROR_REINTENTABLE
+      "68": ESTADO_DESCONOCIDO
+      "12": ERROR_NEGOCIO
+
+  banorte-rest:
+    protocolo: REST
+    endpoint: "https://autorizador.banorte.example.mx/v2/reversos"
+    credencial_conjur_alias: "conjur://vault/pci/proveedores/banorte/mtls-client-cert"
+    timeouts:
+      conexion_ms: 1000
+      lectura_ms: 3500
+    reintentos:
+      inmediatos_max: 2
+      escalones_diferidos: ["reverso.retry.1m", "reverso.retry.5m", "reverso.retry.30m"]
+      ventana_maxima_minutos: 60
+    circuit_breaker:
+      sliding_window_size: 20
+      failure_rate_threshold: 50
+      wait_duration_in_open_ms: 30000
+    estrategia_reverso: CONSULTA_PREVIA_ANTE_DESCONOCIDO
+    tabla_codigos_canonicos:
+      "HTTP-200-OK": EXITO
+      "HTTP-200-ALREADY-REVERSED": YA_APLICADO
+      "HTTP-503": ERROR_REINTENTABLE
+      "HTTP-504-READ-TIMEOUT": ESTADO_DESCONOCIDO
+      "HTTP-422": ERROR_NEGOCIO

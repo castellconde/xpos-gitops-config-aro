@@ -1,0 +1,24 @@
+# =========================================================================================
+# ArgoCD Application - Sincronización GitOps Pull-Based hacia ARO (3 Zonas)
+# =========================================================================================
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: xpos-integracion-pos-prod-cde
+  namespace: openshift-gitops
+spec:
+  project: xpos-pci-cde
+  source:
+    repoURL: https://github.com/castellconde/xpos-gitops-config-aro.git
+    targetRevision: main
+    path: manifests
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: xpos-cde-pci
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - PrunePropagationPolicy=foreground

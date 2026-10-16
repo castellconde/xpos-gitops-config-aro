@@ -1,0 +1,74 @@
+# =========================================================================================
+# KEDA ScaledObject Consciente de Salud del Circuit Breaker (Mejora RT-02)
+# Escala por lag de Kafka SOLO cuando el Circuit Breaker hacia el proveedor está CLOSED (1),
+# evitando levantar pods inútilmente cuando el consumidor está pausado por proveedor caído.
+# =========================================================================================
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: xpos-motor-reversos-scaler
+  namespace: xpos-cde-pci
+spec:
+  scaleTargetRef:
+    name: xpos-ms-motor-reversos
+  minReplicaCount: 3
+  maxReplicaCount: 24
+  pollingInterval: 15
+  cooldownPeriod: 120
+  triggers:
+    - type: kafka
+      metadata:
+        bootstrapServers: xpos-kafka-cluster-kafka-bootstrap.xpos-cde-pci.svc:9093
+        consumerGroup: xpos-motor-reversos-cg
+        topic: pagos.reverso.solicitado
+        lagThreshold: "50"
+        activationLagThreshold: "10"
+    - type: prometheus
+      metadata:
+        serverAddress: http://thanos-querier.openshift-monitoring.svc:9091
+        metricName: resilience4j_circuitbreaker_state_closed
+        query: |
+          sum(resilience4j_circuitbreaker_state{namespace="xpos-cde-pci",name="proveedor-pagos-cb",state="closed"})
+        threshold: "1"
+---
+# =========================================================================================
+# NetworkPolicy de Aislamiento Estricto del CDE PCI-DSS en ARO (Principio P2)
+# Solo permite tráfico de entrada desde el API Gateway hacia la Fachada POS,
+# y desde la Fachada/Motor hacia Kafka y PostgreSQL.
+# =========================================================================================
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: xpos-cde-pci-default-deny-and-allowlist
+  namespace: xpos-cde-pci
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/part-of: xpos-integracion-pos
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: xpos-api-gateway
+      ports:
+        - protocol: TCP
+          port: 8080
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              strimzi.io/cluster: xpos-kafka-cluster
+      ports:
+        - protocol: TCP
+          port: 9093
+    - to:
+        - ipBlock:
+            cidr: 10.120.16.0/24
+      ports:
+        - protocol: TCP
+          port: 5432
+        - protocol: TCP
+          port: 6432

@@ -1,0 +1,25 @@
+name: CI GitOps - Validación de Catálogo YAML, Sin Secretos y Políticas PCI-DSS
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  validate-gitops:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validar sintaxis YAML y referencias obligatorias a CyberArk Conjur
+        run: |
+          python3 -c '
+          import yaml, sys
+          with open("config/proveedores-y-bitacora.yaml") as f:
+              data = yaml.safe_load(f)
+          assert "bitacora" in data, "Falta bloque bitacora"
+          assert data["bitacora"]["retencion_total_meses"] >= 12, "PCI-DSS exige mínimo 12 meses de retención total"
+          for nombre, p in data["proveedores"].items():
+              assert p["credencial_conjur_alias"].startswith("conjur://"), f"Proveedor {nombre} debe usar alias de Conjur"
+          print("Catálogo GitOps validado exitosamente.")
+          '
